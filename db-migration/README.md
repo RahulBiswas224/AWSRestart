@@ -1,4 +1,3 @@
-```markdown
 # 🗄️ Database Migration to Amazon RDS
 
 **Project Objective:** Migrate a dynamic web application's local database (running on an EC2 instance) to a fully managed Amazon Relational Database Service (Amazon RDS) instance, resulting in a more secure, scalable, and highly available architecture. 
@@ -8,10 +7,8 @@
 ## 🏗️ Architecture Overview
 
 <div align="center">
-  <img src="image_5bff80.jpg" alt="Cafe Web Application Migration - Before and After Architecture">
+  <img src="../architecture.jpg" alt="Cafe Web Application Migration - Before and After Architecture">
 </div>
-
-<br>
 
 **Before Migration (Starting Architecture):**
 The café web application and its MariaDB database were hosted together on a single Amazon EC2 LAMP (Linux, Apache, MySQL, PHP) instance within a public subnet.
