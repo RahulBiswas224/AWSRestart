@@ -7,6 +7,10 @@
 
 ## 🏗️ Architecture Overview
 
+<div align="center">
+  <img src="architecture.jpg" alt="Cafe Web Application Migration - Before and After Architecture">
+</div>
+
 **Before Migration (Starting Architecture):**
 The café web application and its MariaDB database were hosted together on a single Amazon EC2 LAMP (Linux, Apache, MySQL, PHP) instance within a public subnet.
 
