@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Single-AZ web server stack — VPC with a public subnet, an EC2 instance
+  running Apache, a security group scoped to HTTP/SSH, and an S3 bucket
+  for application assets. Built as a proof-of-concept IaC deployment
+  following AWS re/Start training, written from scratch to match my own
+  naming conventions and structure.
+
+Parameters:
+  VpcCIDR:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR block for the VPC
+
+  PublicSubnetCIDR:
+    Type: String
+    Default: 10.0.0.0/24
+    Description: CIDR block for the public subnet
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+    Description: EC2 instance size for the web server
+
+  SSHLocation:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: >
+      CIDR block allowed to SSH into the instance. Restrict this to your
+      own IP (e.g. 203.0.113.4/32) rather than leaving it open to the
+      internet — 0.0.0.0/0 is only the default here so the stack deploys
+      without extra input; tighten it before real use.
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 key pair to enable SSH access to the instance
+
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: >
+      Resolved via SSM Parameter Store so the template always picks up the
+      current Amazon Linux 2023 AMI for whatever region it's deployed in,
+      instead of a hardcoded AMI ID that goes stale or breaks across regions.
+
+Resources:
+  # ---------------------------------------------------------------------
+  # Networking
+  # ---------------------------------------------------------------------
+  AppVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: rb-app-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: rb-app-igw
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref AppVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref AppVPC
+      CidrBlock: !Ref PublicSubnetCIDR
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: rb-public-subnet
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref AppVPC
+      Tags:
+        - Key: Name
+          Value: rb-public-rt
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # ---------------------------------------------------------------------
+  # Security
+  # ---------------------------------------------------------------------
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP from anywhere and SSH from a restricted CIDR
+      VpcId: !Ref AppVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP from anywhere
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
+          Description: SSH from an admin-controlled CIDR only
+      Tags:
+        - Key: Name
+          Value: rb-webserver-sg
+
+  # ---------------------------------------------------------------------
+  # Compute
+  # ---------------------------------------------------------------------
+  WebServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAmiId
+      KeyName: !Ref KeyName
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref WebServerSecurityGroup
+      Tags:
+        - Key: Name
+          Value: rb-web-server
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          # -e ensures the script stops immediately on the first failing
+          # command rather than silently continuing — the same lesson I
+          # took from debugging a failed UserData run in AWS re/Start,
+          # where a missing package name let the script fail quietly.
+          dnf update -y
+          dnf install -y httpd
+          systemctl enable httpd
+          systemctl start httpd
+          echo "<h1>Hello from Rahul's CloudFormation-deployed web server!</h1>" > /var/www/html/index.html
+
+  # ---------------------------------------------------------------------
+  # Storage
+  # ---------------------------------------------------------------------
+  AppAssetsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: rb-app-assets-bucket
+    # No DeletionPolicy override: CloudFormation will refuse to delete this
+    # bucket via `delete-stack` once it contains objects, which is the
+    # built-in safeguard against accidental data loss — worth keeping
+    # rather than forcing deletion with a Retain/ForceDelete workaround.
+
+Outputs:
+  VpcId:
+    Description: ID of the created VPC
+    Value: !Ref AppVPC
+
+  WebServerPublicIP:
+    Description: Public IP address of the web server
+    Value: !GetAtt WebServerInstance.PublicIp
+
+  WebsiteURL:
+    Description: URL to test the deployed web server
+    Value: !Sub "http://${WebServerInstance.PublicIp}"
+
+  AssetsBucketName:
+    Description: Name of the S3 bucket created for application assets
+    Value: !Ref AppAssetsBucket
