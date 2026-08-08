@@ -7,7 +7,7 @@
 ## 🏗️ Architecture Overview
 
 <div align="center">
-  <img src="../architecture.jpg" alt="Cafe Web Application Migration - Before and After Architecture">
+  <img src="./architecture.jpg" alt="Cafe Web Application Migration - Before and After Architecture">
 </div>
 
 **Before Migration (Starting Architecture):**
