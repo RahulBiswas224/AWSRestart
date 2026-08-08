@@ -8,8 +8,10 @@
 ## 🏗️ Architecture Overview
 
 <div align="center">
-  <img src="architecture.jpg" alt="Cafe Web Application Migration - Before and After Architecture">
+  <img src="image_5bff80.jpg" alt="Cafe Web Application Migration - Before and After Architecture">
 </div>
+
+<br>
 
 **Before Migration (Starting Architecture):**
 The café web application and its MariaDB database were hosted together on a single Amazon EC2 LAMP (Linux, Apache, MySQL, PHP) instance within a public subnet.
@@ -79,3 +81,9 @@ To ensure the database was performing optimally post-migration, I utilized **Ama
 * Specifically tracked the `DatabaseConnections` metric, successfully observing the active connection spike when executing an interactive SQL session from the EC2 instance.
 
 ---
+
+
+
+```
+
+```
